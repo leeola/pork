@@ -75,8 +75,11 @@ read = ->
 #   relative directory, and file when iterating through the directory.
 recursive_list = (base, rel, file, callback, stream) ->
   results = []
+  # This is how recursively nested we are into directories.
   depth = 0
   
+  # Push the results from the single list, and if we're not nested (depth > 0)
+  # then call back.
   single_callback = (err, single_results) ->
     results.push single_results...
     if depth is 0
@@ -84,12 +87,15 @@ recursive_list = (base, rel, file, callback, stream) ->
     else
       depth--
   
+  # Pass the stream event off to the stream function. If the file is a
+  # directory, list it's contents and increment the depth.
   single_stream = (base, rel, file, stats) ->
     stream base, rel, file, stats
     if stats.isDirectory()
       depth++
       relative_list base, rel, file, single_callback, single_stream
   
+  # Start off the chain by calling relative_list.
   relative_list base, rel, file, single_callback, single_stream
 
 # (base, rel, file, callback, stream) -> undefined
