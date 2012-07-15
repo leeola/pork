@@ -25,23 +25,28 @@ home = ->
     when 'linux' then process.env.HOME
     else process.env.HOME or process.env.USERPROFILE
 
-# () ->
+# (source, recursive, callback, stream) -> undefined
+#
+# Params:
+#   source: The path to the file/directory to list.
+#   recursive: Truthy if you want it to recursively list.
+#   callback: Called when the full list (including any nested listings) are
+#     finished. The callback is given the arguments `err, results` where
+#     `err` is an error object (or null) and `results` is a list of results,
+#     populated with the same data as stream is given: `[[base, rel,
+#     file, stats], [base, rel, file, stats]]` and etc.
+#   stream: Called on each file match. Each call is given `base, rel,
+#     file, stats`.
+#
+# Desc:
+#   List files in a directory recursively or not. Files found are streamed as
+#   well as given to the callback.
 list = (source='', recursive=false, callback, stream) ->
-  non_recursive_callback = (err, results) ->
-    new_results = []
-    for [base, rel, file, stats] in results
-      base = path_join base, rel
-      new_results.push [base, file, stats]
-    callback err, new_results
-  
-  non_recursive_stream = (base, rel, file, stats) ->
-    base = path_join base, rel
-    stream base, file, stats
   
   if recursive
     recursive_list source, '', '', callback, stream
   else
-    relative_list source, '', '', non_recursive_callback, non_recursive_stream
+    relative_list source, '', '', callback, stream
 
 move = ->
   throw new Error 'Not Implemented'
@@ -49,7 +54,23 @@ move = ->
 read = ->
   throw new Error 'Not Implemented'
 
-# () ->
+# (base, rel, file, callback, stream) -> undefined
+#
+# Params:
+#   base: The base path. If this is a directory, it is perserved and can be
+#     nested for recursive callbacks.. though, i'm not sure why you would
+#     since this is already recursive.
+#   rel: The state of the recursive depth is stored in the rel var.
+#   file: The current file.
+#   callback: Called when all listing is done. See `list` documentation for
+#     callback formatting.
+#   stream: Called on each file/dir/etc match. See `list` documentation for
+#     stream formatting.
+#
+# Desc:
+#   A function that recursively calls `relative_list()`. Like `relative_list`,
+#   this function has the notable ability to preserve a base directory,
+#   relative directory, and file when iterating through the directory.
 recursive_list = (base, rel, file, callback, stream) ->
   results = []
   depth = 0
@@ -69,7 +90,23 @@ recursive_list = (base, rel, file, callback, stream) ->
   
   relative_list base, rel, file, single_callback, single_stream
 
-# () ->
+# (base, rel, file, callback, stream) -> undefined
+#
+# Params:
+#   base: The base path. If this is a directory, it is perserved and can be
+#     nested for recursive callbacks.. though, i'm not sure why you would
+#     since this is already recursive.
+#   rel: The state of the recursive depth is stored in the rel var.
+#   file: The current file.
+#   callback: Called when all listing is done. See `list` documentation for
+#     callback formatting.
+#   stream: Called on each file/dir/etc match. See `list` documentation for
+#     stream formatting.
+#
+# Desc:
+#   List a single directories (or file..) contents. Notably, with the ability
+#   to preserve a base directory, relative directory, and file when iterating
+#   through the directory.
 relative_list = (base, rel, file, callback, stream) ->
   source = path_join base, rel, file
   
