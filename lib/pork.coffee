@@ -194,6 +194,7 @@ remove = ->
   throw new Error 'Not Implemented'
 
 write = ->
+  throw new Error 'Not Implemented'
 
 
 exports.copy = copy
