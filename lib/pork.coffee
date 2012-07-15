@@ -43,7 +43,8 @@ home = ->
 #   well as given to the callback. This is just shorthand for calling
 #   `relative_list` and `recursive_list`.
 list = (source='', recursive=false, callback, stream) ->
-  
+  # We're going to save a few cycles and call relative vs recursive, if we
+  # can.
   if recursive
     recursive_list source, '', '', callback, stream
   else
@@ -109,34 +110,67 @@ recursive_list = (base, rel, file, callback, stream) ->
 #   to preserve a base directory, relative directory, and file when iterating
 #   through the directory.
 relative_list = (base, rel, file, callback, stream) ->
+  # The file/directory we are listing.
   source = path_join base, rel, file
   
+  # Get the stat, so we know if it's a dir or file.
   fs.stat source, (err, stats) ->
+    # If err, bail.
     if err?
       callback err
       return
     
     if stats.isFile()
+      # If the source is a file, we can just return it.. since we don't have
+      # anything more to list.
+      
       if file is ''
-        base = path.dirname source
+        # Since the caller supplied a file, but not in the file var, we
+        # need to grab the file and remove it from whichever var it came in
+        # on.
+        
+        # Grab our file name.
         file = path.basename source
+        
+        # Based on the file we got, check the `rel` and `base` vars to see
+        # which one the file name came from.
+        if rel[-(file.length)...] is file
+          rel = rel[..(file.length+1)]
+        else
+          base = base[..(file.length+1)]
+      
+      # Call stream, and callback.
       stream base, rel, file, stats
       callback null, [[base, rel, file, stats]]
+      return
     else
+      # A counter for how many files we have returned.
       file_count = 0
+      # Our collected results, given to callback.
       file_results = []
       
+      # Read the dir.
       fs.readdir source, (err, files) ->
+        # Bail, if err.
         if err
           callback err
+          return
         
+        # A local assignment, so we're not constantly accessing files.length
         total_files = files.length
         if total_files is 0
+          # If we have no files, callback and return.
           callback null, []
+          return
         else
           rel = path_join rel, file
+          if rel is '.'
+            rel = ''
         
+        # Our closure function, so we can loop through the files and call
+        # stat on each file.
         stats_closure = (base, rel, file) ->
+          # Get our given source and run fs.stat
           source = path.join(base, rel, file)
           fs.stat source, (err, stats) ->
             if err
@@ -145,10 +179,14 @@ relative_list = (base, rel, file, callback, stream) ->
             stream base, rel, file, stats
             
             file_results.push [base, rel, file, stats]
+            
+            # Increase our count, and then check the count to the total.
+            # callback with the results.
             file_count++
             if file_count is total_files
               callback null, file_results
         
+        # Call our closure with the file name.
         for file in files
           stats_closure base, rel, file
 
