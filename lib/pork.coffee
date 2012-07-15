@@ -15,6 +15,77 @@ path_join = path.join
 copy = ->
   throw new Error 'Not Implemented'
 
+# (path, [callback]) -> undefined
+#
+# Params:
+#   path: The path to check existance of.
+#   callback: Optional. The callback called with the truthy answer.
+#
+# Desc:
+#   Just a local reference to fs.exists.
+exists = if fs.exists? then fs.exists else path.exists
+
+# (file, [callback]) ->
+#
+# Params:
+#   file: The path to cascade check existance of.
+#   callback: Optional. The callback called with the cascade data.
+#
+# Desc:
+#   Check for existance of the given file or directory. If it does not exist,
+#   the function will traverse up the given directory structure one level and
+#   check if that exists. It will keep doing this until an existance is found,
+#   or until the given path has been traversed as far as possible.
+#
+#   For example, `fake/dir` will check for existance of `./fake/dir`, and then
+#   `./fake` and then fail. It will *not* check `./` because that was not
+#   supplied in the file argument. Note that `./` was added in this example
+#   because `fake/dir` is a relative directory to begin with.. it just lacks
+#   the explicit definition of the relative base.
+#
+#   The callback data for this will be the following:
+#     false,
+#     [
+#       [false, 'fake/dir']
+#       [false, 'fake']
+#     ]
+#
+#   On the other hand, if the file argument was `./fake/dir` it will check
+#   `./fake/dir`, then `./fake` then it will succeed with the final check,
+#   `./`.
+#
+#   The callback data for this will be the following:
+#     true,
+#     [
+#       [false, './fake/dir']
+#       [false, './fake']
+#       [true, './']
+#     ]
+exists_cascade = (file, callback=->) ->
+  # The cwd being cascaded upwards.
+  cwd = file
+  # Each upward cascade result is stored here.
+  results = []
+  
+  exists_callback = (exist_result) ->
+    # Push our results.
+    results.push [exist_result, cwd]
+    if exist_result
+      # If it does exist, callback and we're done.
+      callback true, results
+    else
+      # If it does not exist, we need to go up a directory and try again.
+      cwd = path.dirname cwd
+      if cwd is '.' and file[...2] isnt '.'+sep()
+        # If we're at the relative root, and the caller did not define a
+        # relative root, callback and end.
+        callback false, results
+      else
+        # Otherwise try again.
+        exists cwd, exists_callback
+  # Start our exists check.
+  exists file, exists_callback
+
 # () -> string
 #
 # Desc:
@@ -199,13 +270,24 @@ relative_list = (base, rel, file, callback, stream) ->
 remove = ->
   throw new Error 'Not Implemented'
 
+# () -> string
+#
+# Desc:
+#   Calculate the path separator for the host os. Note that if available,
+#   this just uses `path.sep`, but that is a new feature to 0.8.
+sep = ->
+  if path.sep then path.sep else path.join('a', 'b')[1]
+
 write = ->
   throw new Error 'Not Implemented'
 
 
 exports.copy = copy
+exports.exists = exists
+exports.exists_cascade = exists_cascade
 exports.home = home
 exports.list = list
 exports.recursive_list = recursive_list
 exports.relative_list = relative_list
 exports.remove = remove
+exports.sep = sep
