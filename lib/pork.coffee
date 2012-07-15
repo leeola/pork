@@ -40,7 +40,8 @@ home = ->
 #
 # Desc:
 #   List files in a directory recursively or not. Files found are streamed as
-#   well as given to the callback.
+#   well as given to the callback. This is just shorthand for calling
+#   `relative_list` and `recursive_list`.
 list = (source='', recursive=false, callback, stream) ->
   
   if recursive
