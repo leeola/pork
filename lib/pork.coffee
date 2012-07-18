@@ -124,8 +124,11 @@ list = (source='', recursive=false, callback, stream) ->
 move = ->
   throw new Error 'Not Implemented'
 
-read = ->
-  throw new Error 'Not Implemented'
+# (file, [encoding], [callback]) -> undefined
+#
+# Desc:
+#   A reference to `fs.readFile`.
+read_file = fs.readFile
 
 # (base, rel, file, callback, stream) -> undefined
 #
@@ -278,8 +281,33 @@ remove = ->
 sep = ->
   if path.sep then path.sep else path.join('a', 'b')[1]
 
-write = ->
-  throw new Error 'Not Implemented'
+# (file, data, [encoding], [callback]) -> undefined
+#
+# Params:
+#   file: The filename to write.
+#   data: The contents of the file.
+#   encoding: Optional. The encoding of the file.
+#   callback: Optional. Called when the file has finished writing, or after
+#     any errors.
+#
+# Desc:
+#   Write a file to disk. This is the same as `fs.writeFile` with the notable
+#   feature that if the directory(ies) being written does not exist, they
+#   will be created.
+write_file = (file, data, encoding, callback=->) ->
+  dir = path.dirname file
+  
+  # Check if the directory exists. If it doesn't, call `make_directory` then
+  # `write_file`
+  exists dir, (dir_exists) ->
+    if not dir_exists
+      make_directory dir, (err) ->
+        if err
+          throw err
+        fs.writeFile file, data, encoding, callback
+    else
+      fs.writeFile file, data, encoding, callback
+
 
 
 exports.copy = copy
@@ -291,3 +319,4 @@ exports.recursive_list = recursive_list
 exports.relative_list = relative_list
 exports.remove = remove
 exports.sep = sep
+exports.write_file = write_file
