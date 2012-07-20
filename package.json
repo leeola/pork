@@ -1,5 +1,5 @@
 {
-  "name": "fenearstreamer",
+  "name": "pork",
   "version": "0.0.0",
   "description": "Dragons, dragons everywhere.",
   "private": true,
@@ -9,17 +9,14 @@
   "author": "leeolayvar <leeolayvar@gmail.com> (http://leeolayvar.com)",
   "repository": {
     "type": "git",
-    "url": "git://github.com/leeolayvar/fenearstreamer.git"
+    "url": "git://github.com/leeolayvar/pork.git"
   },
   "bugs": {
-    "url": "http://github.com/leeolayvar/fenearstreamer/issues"
+    "url": "http://github.com/leeolayvar/pork/issues"
   },
   "scripts": {
     "prepublish": "cake prepublish",
     "test": "cake test"
-  },
-  "bin": {
-    "fenearstreamer": "./build/bin/fenearstreamer.js"
   },
   "devDependencies": {
     "should": "0.5.x",
