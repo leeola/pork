@@ -15,6 +15,7 @@ path_join = path.join
 copy = ->
   throw new Error 'Not Implemented'
 
+
 # (path, [callback]) -> undefined
 #
 # Params:
@@ -24,6 +25,7 @@ copy = ->
 # Desc:
 #   Just a local reference to fs.exists.
 exists = if fs.exists? then fs.exists else path.exists
+
 
 # (file, [callback]) ->
 #
@@ -48,19 +50,21 @@ exists = if fs.exists? then fs.exists else path.exists
 #     [
 #       [false, 'fake/dir']
 #       [false, 'fake']
-#     ]
+#     ],
+#     false
 #
 #   On the other hand, if the file argument was `./fake/dir` it will check
 #   `./fake/dir`, then `./fake` then it will succeed with the final check,
 #   `./`.
 #
 #   The callback data for this will be the following:
-#     true,
+#     false,
 #     [
 #       [false, './fake/dir']
 #       [false, './fake']
 #       [true, './']
-#     ]
+#     ],
+#     true
 exists_cascade = (file, callback=->) ->
   # The cwd being cascaded upwards.
   cwd = file
@@ -72,19 +76,24 @@ exists_cascade = (file, callback=->) ->
     results.push [exist_result, cwd]
     if exist_result
       # If it does exist, callback and we're done.
-      callback true, results
+      if results.length is 1
+        callback true, results, true
+      else
+        callback false, results, true
     else
       # If it does not exist, we need to go up a directory and try again.
       cwd = path.dirname cwd
       if cwd is '.' and file[...2] isnt '.'+sep()
         # If we're at the relative root, and the caller did not define a
         # relative root, callback and end.
-        callback false, results
+        callback false, results, false
+        return
       else
         # Otherwise try again.
         exists cwd, exists_callback
   # Start our exists check.
   exists file, exists_callback
+
 
 # () -> string
 #
@@ -95,6 +104,7 @@ home = ->
     when 'win32' then process.env.USERPROFILE
     when 'linux' then process.env.HOME
     else process.env.HOME or process.env.USERPROFILE
+
 
 # (source, recursive, callback, stream) -> undefined
 #
@@ -120,6 +130,61 @@ list = (source='', recursive=false, callback, stream) ->
     recursive_list source, '', '', callback, stream
   else
     relative_list source, '', '', callback, stream
+
+
+# (dir, [mode], [callback(err)]) -> undefined
+#
+# Params:
+#   dir: The directory to create.
+#   mode: Optional. The mode to create the directory under. Note that if the
+#     parent directories do not exist, this mode will be applied to them as
+#     well as the given directory.
+#   callback: Optional. Called when the directory is created.
+#
+# Callback:
+#   err: Null if no error, otherwise the Error object is given.
+#
+# Desc:
+#   Create a directory and the entire parent directories if needed.
+make_directory = (dir, mode, callback) ->
+  # Set up our dynamic arguments.. sigh.
+  if mode instanceof Function
+    callback = mode
+    mode = undefined
+  
+  # Get our exists cascade so we know what we need to create.
+  exists_cascade dir, (exists, cascade) ->
+    if exists
+      callback new Error 'Directory already exists.'
+      return
+    
+    mkdir_cascade cascade
+  
+  # An interative function that will pop through the given cascade list
+  # and create any non-existing directories given.
+  mkdir_cascade = (cascade=[]) ->
+    cascade_item = cascade.pop()
+    
+    # if the item is null, we're at the end of the cascade. We should call our
+    # callback, as we have already created all non-existing directories.
+    if not cascade_item?
+      callback null
+      return
+    
+    [exists, dir] = cascade_item
+    
+    # If exists is true, skip this cascade item. For further explanation of
+    # this step, see the `exists_cascade()` documentation.
+    if exists
+      mkdir_cascade cascade
+      return
+    
+    fs.mkdir dir, mode, (err) ->
+      if err
+        callback err
+        return
+      mkdir_cascade cascade
+
 
 move = ->
   throw new Error 'Not Implemented'
@@ -317,6 +382,7 @@ exports.home = home
 exports.list = list
 exports.recursive_list = recursive_list
 exports.relative_list = relative_list
+exports.make_directory = make_directory
 exports.remove = remove
 exports.sep = sep
 exports.write_file = write_file
