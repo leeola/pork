@@ -1,10 +1,9 @@
-#
-# lib/index.coffee
-#
-# Copyright (c) 2012 Lee Olayvar <leeolayvar@gmail.com>
-# MIT Licensed
-#
+# 
+# # Pork Index
+# 
+# Just a simple index file for Pork
 pork = require './pork'
+
 
 
 
