@@ -93,13 +93,16 @@ list = (base, opts={}, callback=(->), streaming_callback=->) ->
         fs.readdir src, (err, files) ->
           rel = src
           cb_count = 0
+          running = true
           file_infos = [info]
           for file in files
             rlist rel, file, depth+1, (err, fi) ->
+              if not running then return
               if err?
                 streaming_callback err, null
                 cb err, null
-                break
+                running = false
+                return
               cb_count += 1
               file_infos = file_infos.concat fi
               if cb_count >= files.length
