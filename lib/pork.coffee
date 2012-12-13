@@ -8,6 +8,53 @@ path = require 'path'
 
 
 
+# ## Exists
+# 
+# Check whether or not the given path exists. This is exactly the same
+# as `fs.exists`, except that it checks for the existance of `fs.exists` and
+# swaps in the older, deprecated `path.exists` if needed.
+exists = if fs.exists? then fs.exists else path.exists
+
+
+# ## Exists Sync
+# 
+# Check whether or not the given path exists. This is exactly the same
+# as `fs.existsSync`, except that it checks for the existance of `fs.existsSync`
+# and swaps in the older, deprecated `path.existsSync` if needed.
+exists_sync = if fs.existsSync? then fs.existsSync else path.existsSync
+
+
+# ## Exists Cascade
+# 
+# Check for the existance of the given path. If it does not exist, it
+# will traverse up the chain until it finds a path that exists.
+# 
+# The callback will be given a boolean first argument, a list of
+# `[[bool, 'dir/file'], [bool, 'dir']]` for each dir that the function
+# checks, and a final bool value if the cascade was able to find any dir that
+# exists.
+exists_cascade = (file, callback=->) ->
+  cwd = file
+  results = []
+  #The callback we give to exists
+  exists_cb = (result) ->
+    results.push [result, cwd]
+    if result
+      if results.length is 1
+        callback true, results, true
+      else
+        callback false, results, true
+    else
+      cwd = path.dirname cwd
+      #If we're at the relative root, but the caller did not actually define
+      #a relative root, callback and end.
+      if cwd is '.' and file[..1] isnt ".#{sep()}"
+        callback false, results, false
+      else
+        exists cwd, exists_cb
+  exists file, exists_cb
+
+
 # ## User Home
 # 
 # Attempt to find the systems home path.
@@ -142,6 +189,9 @@ subtract = (a, b) ->
 
 
 
+exports.exists = exists
+exports.exists_cascade = exists_cascade
+exports.exists_sync = exists_sync
 exports.__defineGetter__ 'home', home
 exports.list = list
 exports.__defineGetter__ 'sep', sep
