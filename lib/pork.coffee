@@ -161,6 +161,43 @@ list = (base, opts={}, callback=(->), streaming_callback=->) ->
     callback err, file_infos
 
 
+# ## Make Directory
+# 
+# Make a directory, with an optional recursive option.
+make_directory = (dir, opts, callback=->) ->
+  if opts instanceof Function
+    callback = opts
+    opts = {}
+  opts.recursive ?= true
+  opts.mode ?= undefined
+  
+  if opts.recursive
+    #Take a cascade list and create all directories that are missing.
+    mkdir_cascade = (cascade) ->
+      cascade_item = cascade.pop()
+      if not cascade_item? then return callback null
+      [exists, dir] = cascade_item
+      
+      fs.mkdir dir, opts.mode, (err) ->
+        if err? then return callback err
+        mkdir_cascade cascade
+    
+    #Get a cascade of existing/not directories.
+    exists_cascade dir, (exists, cascade, root_exists) ->
+      if exists
+        callback new Error 'Directory already exists'
+      else if not root_exists
+        callback new Error 'The given path has no existing root directory'
+      else
+        #We're removing the last item on the cascade because that item exists
+        mkdir_cascade cascade[0...-1]
+    
+  else
+    fs.mkdir dir, opts.mode, (err) ->
+      if err? then return callback err
+      callback null
+
+
 # ## Separator Character
 # 
 # Find the system separator. This is simply a legacy fix for multiple
@@ -194,5 +231,6 @@ exports.exists_cascade = exists_cascade
 exports.exists_sync = exists_sync
 exports.__defineGetter__ 'home', home
 exports.list = list
+exports.make_directory = make_directory
 exports.__defineGetter__ 'sep', sep
 exports.subtract = subtract
