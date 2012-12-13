@@ -168,10 +168,10 @@ make_directory = (dir, opts, callback=->) ->
   if opts instanceof Function
     callback = opts
     opts = {}
-  opts.recursive ?= true
+  opts.cascade ?= true
   opts.mode ?= undefined
   
-  if opts.recursive
+  if opts.cascade
     #Take a cascade list and create all directories that are missing.
     mkdir_cascade = (cascade) ->
       cascade_item = cascade.pop()
@@ -196,6 +196,12 @@ make_directory = (dir, opts, callback=->) ->
     fs.mkdir dir, opts.mode, (err) ->
       if err? then return callback err
       callback null
+
+
+# ## Read File
+# 
+# This is simply a pointer to `fs.readFile`, because i actually like it.
+read_file = fs.readFile
 
 
 # ## Separator Character
@@ -224,6 +230,28 @@ subtract = (a, b) ->
   return b[i..].join sep()
 
 
+# ## Write File
+# 
+# Write a file with the given data.
+write_file = (file, data, opts, callback=->) ->
+  if opts instanceof Function
+    callback = opts
+    opts = {}
+  opts.encoding ?= undefined
+  opts.parents ?= true
+  
+  dir = path.dirname file
+  exists dir, (dir_exists) ->
+    if dir_exists
+      fs.writeFile file, data, opts.encoding, callback
+    else if opts.parents
+      make_directory dir, cascade: true, (err) ->
+        if err then return callback err
+        fs.writeFile file, data, opts.encoding, callback
+    else
+      callback new Error 'Directory does not exist'
+
+
 
 
 exports.exists = exists
@@ -233,4 +261,6 @@ exports.__defineGetter__ 'home', home
 exports.list = list
 exports.make_directory = make_directory
 exports.__defineGetter__ 'sep', sep
+exports.read_file = read_file
 exports.subtract = subtract
+exports.write_file = write_file
