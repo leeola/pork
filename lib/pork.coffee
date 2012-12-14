@@ -8,6 +8,87 @@ path = require 'path'
 
 
 
+# ## Copy
+# 
+# Copy the given path to the output directory.
+copy = (fin, out, opts={}, callback=->) ->
+  if opts instanceof Function
+    stream_callback = callback
+    callback = opts
+    opts = {}
+  opts.depth ?= 0
+  opts.overwrite ?= true
+  opts.merge ?= true
+  
+  #Some basic state trackers. Not pretty, but they work.
+  running = true
+  listing = true
+  writing = 0
+  
+  fin_info = undefined
+  
+  done_check = ->
+    if running and writing <= 0 and not listing
+      callback null
+  
+  cb = () ->
+    listing = false
+    done_check()
+  
+  scb = (err, in_path, info) ->
+    if not running then return
+    if err?
+      running = false
+      callback err
+      return
+    writing += 1
+    
+    #We need to get the info about `fin` to figure out if it is
+    #a file or dir. So, we're assuming that our first match is the proper
+    #fin. If this turns out to not always be true, no biggie, we can just
+    #pull the info before we start listing.
+    if not fin_info?
+      fin_info = info
+    
+    if not opts.merge
+      #If the user specified to not merge, we don't care if fin is
+      #a dir or file, we just put fin in the out.
+      out_path = path.join out, in_path
+    else if not fin_info.isfile
+      #If fin is a dir, and the user has specified to merge, remove the
+      #first dir provided on the fin, so that we can merge the contents of
+      #dir into out.
+      dirs = in_path.split sep()
+      dirs[0] = out
+      out_path = dirs.join sep()
+    else
+      out_path = out
+    
+    if info.isfile
+      make_directory (path.dirname out_path), (err) ->
+        if err? and err.message isnt 'Directory already exists'
+          running = false
+          callback err
+          return
+        read_file in_path, (err, data) ->
+          if err?
+            running = false
+            callback err
+            return
+          write_file out_path, data, overwrite: opts.overwrite, (err) ->
+            if err?
+              running = false
+              callback err
+              return
+            writing -= 1
+            done_check()
+    else
+      writing -= 1
+      done_check()
+  
+  list fin, depth: opts.depth, cb, scb
+
+
 # ## Exists
 # 
 # Check whether or not the given path exists. This is exactly the same
@@ -164,7 +245,7 @@ list = (base, opts={}, callback=(->), streaming_callback=->) ->
 # ## Make Directory
 # 
 # Make a directory, with an optional recursive option.
-make_directory = (dir, opts, callback=->) ->
+make_directory = (dir, opts={}, callback=->) ->
   if opts instanceof Function
     callback = opts
     opts = {}
@@ -176,25 +257,32 @@ make_directory = (dir, opts, callback=->) ->
     mkdir_cascade = (cascade) ->
       cascade_item = cascade.pop()
       if not cascade_item? then return callback null
-      [exists, dir] = cascade_item
+      [dir_exists, dir] = cascade_item
+      
+      #If the dir exists, that simply means the root dir existed and
+      #we want to ignore it.
+      if dir_exists then return mkdir_cascade cascade
       
       fs.mkdir dir, opts.mode, (err) ->
-        if err? then return callback err
+        if err?
+          if err.message[0...13] is 'EEXIST, mkdir'
+            return callback new Error 'Directory already exists'
+          return callback err
         mkdir_cascade cascade
     
     #Get a cascade of existing/not directories.
     exists_cascade dir, (exists, cascade, root_exists) ->
       if exists
         callback new Error 'Directory already exists'
-      else if not root_exists
-        callback new Error 'The given path has no existing root directory'
       else
-        #We're removing the last item on the cascade because that item exists
-        mkdir_cascade cascade[0...-1]
+        mkdir_cascade cascade
     
   else
     fs.mkdir dir, opts.mode, (err) ->
-      if err? then return callback err
+      if err?
+        if err.message[0...13] is 'EEXIST, mkdir'
+          return callback new Error 'Directory already exists'
+        return callback err
       callback null
 
 
@@ -246,7 +334,7 @@ write_file = (file, data, opts, callback=->) ->
       fs.writeFile file, data, opts.encoding, callback
     else if opts.parents
       make_directory dir, cascade: true, (err) ->
-        if err then return callback err
+        if err? then return callback err
         fs.writeFile file, data, opts.encoding, callback
     else
       callback new Error 'Directory does not exist'
@@ -254,6 +342,7 @@ write_file = (file, data, opts, callback=->) ->
 
 
 
+exports.copy = copy
 exports.exists = exists
 exports.exists_cascade = exists_cascade
 exports.exists_sync = exists_sync
