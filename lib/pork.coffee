@@ -35,12 +35,9 @@ copy = (fin, out, opts={}, callback=->) ->
     listing = false
     done_check()
   
-  scb = (err, in_path, info) ->
+  scb = (in_path, info) ->
     if not running then return
-    if err?
-      running = false
-      callback err
-      return
+    
     writing += 1
     
     #We need to get the info about `fin` to figure out if it is
@@ -190,23 +187,18 @@ list = (base, opts={}, callback=(->), streaming_callback=->) ->
       return base: base, rel: (subtract base, rel), file: file
   
   # ### Recursively Stat
-  # 
-  # 
   rlist = (rel, file, depth, cb) ->
     src = path.join rel, file
     
     fs.stat src, (err, stat) ->
-      if err?
-        streaming_callback err, null
-        cb err, null
-        return
+      if err? then return cb err, null
       
       #Make our info, and callback to the stream
       info = fmt rel, file
       info.path = src
       info.isfile = stat.isFile()
       info.stat = stat
-      streaming_callback null, src, info
+      streaming_callback src, info
       
       #rlist is listing a file
       if info.isfile
@@ -219,15 +211,17 @@ list = (base, opts={}, callback=(->), streaming_callback=->) ->
       #rlist is listing a dir, and we want to go into it
       else
         fs.readdir src, (err, files) ->
+          file_infos = [info]
+          if files.length is 0
+            cb null, file_infos
+            return
           rel = src
           cb_count = 0
           running = true
-          file_infos = [info]
           for file in files
             rlist rel, file, depth+1, (err, fi) ->
               if not running then return
               if err?
-                streaming_callback err, null
                 cb err, null
                 running = false
                 return
@@ -292,6 +286,80 @@ make_directory = (dir, opts={}, callback=->) ->
 read_file = fs.readFile
 
 
+# ## Remove
+# 
+# Remove the given file or directory, with a depth option.
+remove = (rm_path, opts={}, callback=->) ->
+  if opts instanceof Function
+    callback = opts
+    opts = {}
+  opts.depth ?= 1
+  
+  fcount = 0
+  listing = true
+  running = true
+  
+  dirs_cb = (err, infos) ->
+    if not running then return
+    if err?
+      running = false
+      callback err
+      return
+    
+    #Note that we are removing the directories like this because
+    #we want to remove them in reverse order, ensuring a simple hierarchy
+    #order. In the future we may add a proper sorting method, in which
+    #case we could speed up execution of this function for many
+    #directories.. but this is good enough for a 0.0.1 with no tests.. lol.
+    rm_dirs = ->
+      dir_info = infos.pop()
+      if not dir_info? then return callback null
+      console.log "rmdir '#{dir_info.path}'"
+      
+      if dir_info.isfile
+        running = false
+        callback new Error "Unable to remove file '#{dir_info.path}'"
+      else
+        fs.rmdir dir_info.path, (err) ->
+          if err?
+            running = false
+            callback err
+            return
+          rm_dirs()
+    rm_dirs()
+  
+  file_done_check = ->
+    if not running then return
+    if not listing and fcount is 0
+      list rm_path, depth: opts.depth, dirs_cb
+  
+  files_cb = (err) ->
+    if not running then return
+    if err?
+      running = false
+      callback err
+      return
+    listing = false
+    file_done_check()
+  
+  files_stream = (file_path, info) ->
+    console.log "rmfiles '#{file_path}', #{info.isfile}"
+    if info.isfile
+      fcount += 1
+      fs.unlink file_path, (err) ->
+        if err?
+          running = false
+          callback err
+          return
+        fcount -= 1
+        file_done_check()
+    else
+      file_done_check()
+  
+  list rm_path, depth: opts.depth, files_cb, files_stream
+  
+
+
 # ## Separator Character
 # 
 # Find the system separator. This is simply a legacy fix for multiple
@@ -351,5 +419,6 @@ exports.list = list
 exports.make_directory = make_directory
 exports.__defineGetter__ 'sep', sep
 exports.read_file = read_file
+exports.remove = remove
 exports.subtract = subtract
 exports.write_file = write_file
