@@ -143,6 +143,43 @@ home = ->
     else process.env.HOME or process.env.USERPROFILE
 
 
+# ## List List
+# 
+# An internal function which accepts a list of paths and passes each path
+# off to the list command. Then, after all listing is done, concats all
+# of the information and calls back. To access this function, simply
+# call `list ['a', 'b']`.
+list_list = (source_list, opts, callback, streaming_callback) ->
+  #Copy the incoming list so we can modify it
+  list_copy = (item for item in source_list)
+  list_len = source_list.length
+  
+  listed = 0
+  running = true
+  infos = []
+  
+  cb = (err, info) ->
+    if not running then return
+    if err? 
+      running = false
+      callback err
+      return
+    infos.concat info
+    listed++
+    if listed is list_len
+      running = false
+      callback null, infos
+  
+  scb = (args...) -> if running then streaming_callback args...
+  
+  iter = ->
+    item = list_copy.pop()
+    if not item? then return
+    list item, opts, cb, scb
+    iter()
+  iter()
+
+
 # ## List Files & Directories
 # 
 # List all of the files in the given path, with optional recursive depth. The
@@ -165,54 +202,18 @@ home = ->
 #       stat: stat
 #     }
 # 
-list = (input, args...) ->
-  if input instanceof Array
-    list_list input, args...
-  else
-    list_str input, args...
-
-list_list = (source_list, opts={}, callback=(->), streaming_callback=->) ->
-  if opts instanceof Function
-    streaming_callback = callback
-    callback = opts
-    opts = {}
-  
-  #Copy the incoming list so we can modify it
-  list = (item for item in source_list)
-  list_len = list.length
-  
-  listed = 0
-  running = true
-  infos = []
-  
-  cb = (err, info) ->
-    if not running then return
-    if err? 
-      running = false
-      callback err
-      return
-    infos.concat info
-    listed++
-    if listed is list_len
-      running = false
-      callback null, infos
-  
-  scb = (args...) -> if running then streaming_callback args...
-  
-  iter = ->
-    item = list.pop()
-    if not item? then return
-    list_str item, opts, cb, scb
-    iter()
-  iter()
-
-list_str = (base, opts={}, callback=(->), streaming_callback=->) ->
+list = (base, opts={}, callback=(->), streaming_callback=->) ->
   if opts instanceof Function
     streaming_callback = callback
     callback = opts
     opts = {}
   opts.depth ?= 1
   rel = ''
+  
+  #If base is a list, pass it off to `list_list`.
+  if base instanceof Array
+    list_list base, opts, callback, streaming_callback
+    return
   
   # ### Format Paths
   # 
