@@ -165,7 +165,48 @@ home = ->
 #       stat: stat
 #     }
 # 
-list = (base, opts={}, callback=(->), streaming_callback=->) ->
+list = (input, args...) ->
+  if input instanceof Array
+    list_list input, args...
+  else
+    list_str input, args...
+
+list_list = (source_list, opts={}, callback=(->), streaming_callback=->) ->
+  if opts instanceof Function
+    streaming_callback = callback
+    callback = opts
+    opts = {}
+  
+  #Copy the incoming list so we can modify it
+  list = (item for item in source_list)
+  list_len = list.length
+  
+  listed = 0
+  running = true
+  infos = []
+  
+  cb = (err, info) ->
+    if not running then return
+    if err? 
+      running = false
+      callback err
+      return
+    infos.concat info
+    listed++
+    if listed is list_len
+      running = false
+      callback null, infos
+  
+  scb = (args...) -> if running then streaming_callback args...
+  
+  iter = ->
+    item = list.pop()
+    if not item? then return
+    list_str item, opts, cb, scb
+    iter()
+  iter()
+
+list_str = (base, opts={}, callback=(->), streaming_callback=->) ->
   if opts instanceof Function
     streaming_callback = callback
     callback = opts
