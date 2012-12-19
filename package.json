@@ -25,7 +25,7 @@
     "dork": "0.x.x"
   },
   "dependencies": {
-    "bork": "0.0.x"
+    "bork": ">= 0.0.4"
   },
   "engine": "node",
   "main": "./build/lib/index.js",
