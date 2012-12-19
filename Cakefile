@@ -60,12 +60,12 @@ compile = (sources, callback) ->
             if file[-7..] is '.coffee'
               dir = path.dirname file
               exec COFFEE_BIN, ['-co', "./build/#{dir}", file], ->
-                console.log "Compiled file.. '#{file}' to "+
+                console.log "Compiled file '#{file}' to "+
                   "'./build/#{dir}/#{path.basename file[0..-8]}.js'"
                 next()
             else
               pork.copy file, "./build/#{file}", (err) ->
-                console.log "Copied file.. '#{file}' to './build/#{file}'"
+                console.log "Copied file '#{file}' to './build/#{file}'"
                 if err?
                   console.log "Cake Error: #{err.message}"
                   process.exit 0
