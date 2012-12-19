@@ -356,7 +356,6 @@ remove = (rm_path, opts={}, callback=->) ->
     rm_dirs = ->
       dir_info = infos.pop()
       if not dir_info? then return callback null
-      console.log "rmdir '#{dir_info.path}'"
       
       if dir_info.isfile
         running = false
@@ -385,7 +384,6 @@ remove = (rm_path, opts={}, callback=->) ->
     file_done_check()
   
   files_stream = (file_path, info) ->
-    console.log "rmfiles '#{file_path}', #{info.isfile}"
     if info.isfile
       fcount += 1
       fs.unlink file_path, (err) ->
