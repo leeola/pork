@@ -1,41 +1,38 @@
 {
-  "name": "fenearstreamer",
-  "version": "0.0.0",
-  "description": "Dragons, dragons everywhere.",
-  "private": true,
+  "name": "pork",
+  "version": "0.0.1",
+  "description": "File system made easy",
   "keywords": [
-    "dragons"
+    "file",
+    "system",
+    "file system"
   ],
   "author": "leeolayvar <leeolayvar@gmail.com> (http://leeolayvar.com)",
   "repository": {
     "type": "git",
-    "url": "git://github.com/leeolayvar/fenearstreamer.git"
+    "url": "git://github.com/leeolayvar/pork.git"
   },
   "bugs": {
-    "url": "http://github.com/leeolayvar/fenearstreamer/issues"
+    "url": "http://github.com/leeolayvar/pork/issues"
   },
   "scripts": {
     "prepublish": "cake prepublish",
-    "test": "cake test"
-  },
-  "bin": {
-    "fenearstreamer": "./build/bin/fenearstreamer.js"
+    "test": "dork test"
   },
   "devDependencies": {
-    "should": "0.5.x",
-    "coffee-script": "1.3.x",
-    "bork": "0.0.x",
-    "walker": "1.0.x"
+    "should": "1.x.x",
+    "coffee-script": "1.x.x",
+    "dork": "0.x.x"
   },
   "dependencies": {
-    "bork": "0.0.x"
+    "bork": ">= 0.0.4"
   },
   "engine": "node",
   "main": "./build/lib/index.js",
   "licenses": [
     {
       "type": "MIT",
-      "url": "https://raw.github.com/leeolayvar/fenearstreamer/master/LICENSE"
+      "url": "https://raw.github.com/leeolayvar/pork/master/LICENSE"
     }
   ]
 }

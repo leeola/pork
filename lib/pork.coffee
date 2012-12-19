@@ -1,104 +1,141 @@
 #
-# lib/pork.coffee
-#
-# Copyright (c) 2012 Lee Olayvar <leeolayvar@gmail.com>
-# MIT Licensed
-#
+# # Pork File & Path Utilities
+# 
+# 
 fs = require 'fs'
 path = require 'path'
 
-# Some direct references to common objects.
-path_join = path.join
 
 
 
-copy = ->
-  throw new Error 'Not Implemented'
+# ## Copy
+# 
+# Copy the given path to the output directory.
+copy = (fin, out, opts={}, callback=->) ->
+  if opts instanceof Function
+    stream_callback = callback
+    callback = opts
+    opts = {}
+  opts.depth ?= 0
+  opts.overwrite ?= true
+  opts.merge ?= true
+  
+  #Some basic state trackers. Not pretty, but they work.
+  running = true
+  listing = true
+  writing = 0
+  
+  fin_info = undefined
+  
+  done_check = ->
+    if running and writing <= 0 and not listing
+      callback null
+  
+  cb = () ->
+    listing = false
+    done_check()
+  
+  scb = (in_path, info) ->
+    if not running then return
+    
+    writing += 1
+    
+    #We need to get the info about `fin` to figure out if it is
+    #a file or dir. So, we're assuming that our first match is the proper
+    #fin. If this turns out to not always be true, no biggie, we can just
+    #pull the info before we start listing.
+    if not fin_info?
+      fin_info = info
+    
+    if not opts.merge
+      #If the user specified to not merge, we don't care if fin is
+      #a dir or file, we just put fin in the out.
+      out_path = path.join out, in_path
+    else if not fin_info.isfile
+      #If fin is a dir, and the user has specified to merge, remove the
+      #first dir provided on the fin, so that we can merge the contents of
+      #dir into out.
+      dirs = in_path.split sep()
+      dirs[0] = out
+      out_path = dirs.join sep()
+    else
+      out_path = out
+    
+    if info.isfile
+      make_directory (path.dirname out_path), (err) ->
+        if err? and err.message isnt 'Directory already exists'
+          running = false
+          callback err
+          return
+        read_file in_path, (err, data) ->
+          if err?
+            running = false
+            callback err
+            return
+          write_file out_path, data, overwrite: opts.overwrite, (err) ->
+            if err?
+              running = false
+              callback err
+              return
+            writing -= 1
+            done_check()
+    else
+      writing -= 1
+      done_check()
+  
+  list fin, depth: opts.depth, cb, scb
 
 
-# (path, [callback]) -> undefined
-#
-# Params:
-#   path: The path to check existance of.
-#   callback: Optional. The callback called with the truthy answer.
-#
-# Desc:
-#   Just a local reference to fs.exists.
+# ## Exists
+# 
+# Check whether or not the given path exists. This is exactly the same
+# as `fs.exists`, except that it checks for the existance of `fs.exists` and
+# swaps in the older, deprecated `path.exists` if needed.
 exists = if fs.exists? then fs.exists else path.exists
 
 
-# (file, [callback]) ->
-#
-# Params:
-#   file: The path to cascade check existance of.
-#   callback: Optional. The callback called with the cascade data.
-#
-# Desc:
-#   Check for existance of the given file or directory. If it does not exist,
-#   the function will traverse up the given directory structure one level and
-#   check if that exists. It will keep doing this until an existance is found,
-#   or until the given path has been traversed as far as possible.
-#
-#   For example, `fake/dir` will check for existance of `./fake/dir`, and then
-#   `./fake` and then fail. It will *not* check `./` because that was not
-#   supplied in the file argument. Note that `./` was added in this example
-#   because `fake/dir` is a relative directory to begin with.. it just lacks
-#   the explicit definition of the relative base.
-#
-#   The callback data for this will be the following:
-#     false,
-#     [
-#       [false, 'fake/dir']
-#       [false, 'fake']
-#     ],
-#     false
-#
-#   On the other hand, if the file argument was `./fake/dir` it will check
-#   `./fake/dir`, then `./fake` then it will succeed with the final check,
-#   `./`.
-#
-#   The callback data for this will be the following:
-#     false,
-#     [
-#       [false, './fake/dir']
-#       [false, './fake']
-#       [true, './']
-#     ],
-#     true
+# ## Exists Sync
+# 
+# Check whether or not the given path exists. This is exactly the same
+# as `fs.existsSync`, except that it checks for the existance of `fs.existsSync`
+# and swaps in the older, deprecated `path.existsSync` if needed.
+exists_sync = if fs.existsSync? then fs.existsSync else path.existsSync
+
+
+# ## Exists Cascade
+# 
+# Check for the existance of the given path. If it does not exist, it
+# will traverse up the chain until it finds a path that exists.
+# 
+# The callback will be given a boolean first argument, a list of
+# `[[bool, 'dir/file'], [bool, 'dir']]` for each dir that the function
+# checks, and a final bool value if the cascade was able to find any dir that
+# exists.
 exists_cascade = (file, callback=->) ->
-  # The cwd being cascaded upwards.
   cwd = file
-  # Each upward cascade result is stored here.
   results = []
-  
-  exists_callback = (exist_result) ->
-    # Push our results.
-    results.push [exist_result, cwd]
-    if exist_result
-      # If it does exist, callback and we're done.
+  #The callback we give to exists
+  exists_cb = (result) ->
+    results.push [result, cwd]
+    if result
       if results.length is 1
         callback true, results, true
       else
         callback false, results, true
     else
-      # If it does not exist, we need to go up a directory and try again.
       cwd = path.dirname cwd
-      if cwd is '.' and file[...2] isnt '.'+sep()
-        # If we're at the relative root, and the caller did not define a
-        # relative root, callback and end.
+      #If we're at the relative root, but the caller did not actually define
+      #a relative root, callback and end.
+      if cwd is '.' and file[..1] isnt ".#{sep()}"
         callback false, results, false
-        return
       else
-        # Otherwise try again.
-        exists cwd, exists_callback
-  # Start our exists check.
-  exists file, exists_callback
+        exists cwd, exists_cb
+  exists file, exists_cb
 
 
-# () -> string
-#
-# Desc:
-#   Attempt to find the host systems home path.
+# ## User Home
+# 
+# Attempt to find the systems home path.
 home = ->
   switch process.platform
     when 'win32' then process.env.USERPROFILE
@@ -106,283 +143,322 @@ home = ->
     else process.env.HOME or process.env.USERPROFILE
 
 
-# (source, recursive, callback, stream) -> undefined
-#
-# Params:
-#   source: The path to the file/directory to list.
-#   recursive: Truthy if you want it to recursively list.
-#   callback: Called when the full list (including any nested listings) are
-#     finished. The callback is given the arguments `err, results` where
-#     `err` is an error object (or null) and `results` is a list of results,
-#     populated with the same data as stream is given: `[[base, rel,
-#     file, stats], [base, rel, file, stats]]` and etc.
-#   stream: Called on each file match. Each call is given `base, rel,
-#     file, stats`.
-#
-# Desc:
-#   List files in a directory recursively or not. Files found are streamed as
-#   well as given to the callback. This is just shorthand for calling
-#   `relative_list` and `recursive_list`.
-list = (source='', recursive=false, callback, stream) ->
-  # We're going to save a few cycles and call relative vs recursive, if we
-  # can.
-  if recursive
-    recursive_list source, '', '', callback, stream
-  else
-    relative_list source, '', '', callback, stream
+# ## List List
+# 
+# An internal function which accepts a list of paths and passes each path
+# off to the list command. Then, after all listing is done, concats all
+# of the information and calls back. To access this function, simply
+# call `list ['a', 'b']`.
+list_list = (source_list, opts, callback, streaming_callback) ->
+  #Copy the incoming list so we can modify it
+  list_copy = (item for item in source_list)
+  list_len = source_list.length
+  
+  listed = 0
+  running = true
+  infos = []
+  
+  cb = (err, info) ->
+    if not running then return
+    if err? 
+      running = false
+      callback err
+      return
+    infos.concat info
+    listed++
+    if listed is list_len
+      running = false
+      callback null, infos
+  
+  scb = (args...) -> if running then streaming_callback args...
+  
+  iter = ->
+    item = list_copy.pop()
+    if not item? then return
+    list item, opts, cb, scb
+    iter()
+  iter()
 
 
-# (dir, [mode], [callback(err)]) -> undefined
-#
-# Params:
-#   dir: The directory to create.
-#   mode: Optional. The mode to create the directory under. Note that if the
-#     parent directories do not exist, this mode will be applied to them as
-#     well as the given directory.
-#   callback: Optional. Called when the directory is created.
-#
-# Callback:
-#   err: Null if no error, otherwise the Error object is given.
-#
-# Desc:
-#   Create a directory and the entire parent directories if needed.
-make_directory = (dir, mode, callback) ->
-  # Set up our dynamic arguments.. sigh.
-  if mode instanceof Function
-    callback = mode
-    mode = undefined
+# ## List Files & Directories
+# 
+# List all of the files in the given path, with optional recursive depth. The
+# format is `path, options, callback, streaming_callback`, where `options`
+# supports the following options..
+# - depth: The recursive depth. Default is `1`, and `0` means infinite.
+# 
+# The callback format is `error, path, info`. Where `error` is the
+# error object *(null if none)*, `path` is the combined path
+# *(`/foo/bar/baz/zam`)*, `info` is an object containing information 
+# gathered during the list process. Provided simply because it was
+# generated, and may be useful. The format of this object is as follows..
+# 
+#     {
+#       path: '/foo/bar/baz/zam',
+#       base: '/foo/bar',
+#       rel: 'baz',
+#       file: 'zam',
+#       isfile: true,
+#       stat: stat
+#     }
+# 
+list = (base, opts={}, callback=(->), streaming_callback=->) ->
+  if opts instanceof Function
+    streaming_callback = callback
+    callback = opts
+    opts = {}
+  opts.depth ?= 1
+  rel = ''
   
-  # Get our exists cascade so we know what we need to create.
-  exists_cascade dir, (exists, cascade) ->
-    if exists
-      callback new Error 'Directory already exists.'
-      return
-    
-    mkdir_cascade cascade
+  #If base is a list, pass it off to `list_list`.
+  if base instanceof Array
+    list_list base, opts, callback, streaming_callback
+    return
   
-  # An interative function that will pop through the given cascade list
-  # and create any non-existing directories given.
-  mkdir_cascade = (cascade=[]) ->
-    cascade_item = cascade.pop()
+  # ### Format Paths
+  # 
+  # Our recursive function `rlist` only tracks relative and file paths,
+  # since it has no need to track the base *(and only complicates things)*.
+  # 
+  fmt = (rel, file) ->
+    if rel is base
+      return base: base, rel: '', file: file
+    else if base is path.join rel, file
+      return base: base, rel: '', file: ''
+    else
+      return base: base, rel: (subtract base, rel), file: file
+  
+  # ### Recursively Stat
+  rlist = (rel, file, depth, cb) ->
+    src = path.join rel, file
     
-    # if the item is null, we're at the end of the cascade. We should call our
-    # callback, as we have already created all non-existing directories.
-    if not cascade_item?
-      callback null
-      return
-    
-    [exists, dir] = cascade_item
-    
-    # If exists is true, skip this cascade item. For further explanation of
-    # this step, see the `exists_cascade()` documentation.
-    if exists
-      mkdir_cascade cascade
-      return
-    
-    fs.mkdir dir, mode, (err) ->
-      if err
-        callback err
+    fs.stat src, (err, stat) ->
+      if err? then return cb err, null
+      
+      #Make our info, and callback to the stream
+      info = fmt rel, file
+      info.path = src
+      info.isfile = stat.isFile()
+      info.stat = stat
+      streaming_callback src, info
+      
+      #rlist is listing a file
+      if info.isfile
+        cb null, [info]
         return
-      mkdir_cascade cascade
+      #rlist is listing a dir, but we don't want to go into it
+      else if depth >= opts.depth and opts.depth > 0
+        cb null, [info]
+        return
+      #rlist is listing a dir, and we want to go into it
+      else
+        fs.readdir src, (err, files) ->
+          file_infos = [info]
+          if files.length is 0
+            cb null, file_infos
+            return
+          rel = src
+          cb_count = 0
+          running = true
+          for file in files
+            rlist rel, file, depth+1, (err, fi) ->
+              if not running then return
+              if err?
+                cb err, null
+                running = false
+                return
+              cb_count += 1
+              file_infos = file_infos.concat fi
+              if cb_count >= files.length
+                cb null, file_infos
+                return
+  
+  #Now run our rlist on the base.
+  rlist base, '', 0, (err, file_infos) ->
+    callback err, file_infos
 
 
-move = ->
-  throw new Error 'Not Implemented'
+# ## Make Directory
+# 
+# Make a directory, with an optional recursive option.
+make_directory = (dir, opts={}, callback=->) ->
+  if opts instanceof Function
+    callback = opts
+    opts = {}
+  opts.cascade ?= true
+  opts.mode ?= undefined
+  
+  if opts.cascade
+    #Take a cascade list and create all directories that are missing.
+    mkdir_cascade = (cascade) ->
+      cascade_item = cascade.pop()
+      if not cascade_item? then return callback null
+      [dir_exists, dir] = cascade_item
+      
+      #If the dir exists, that simply means the root dir existed and
+      #we want to ignore it.
+      if dir_exists then return mkdir_cascade cascade
+      
+      fs.mkdir dir, opts.mode, (err) ->
+        if err?
+          if err.message[0...13] is 'EEXIST, mkdir'
+            return callback new Error 'Directory already exists'
+          return callback err
+        mkdir_cascade cascade
+    
+    #Get a cascade of existing/not directories.
+    exists_cascade dir, (exists, cascade, root_exists) ->
+      if exists
+        callback new Error 'Directory already exists'
+      else
+        mkdir_cascade cascade
+    
+  else
+    fs.mkdir dir, opts.mode, (err) ->
+      if err?
+        if err.message[0...13] is 'EEXIST, mkdir'
+          return callback new Error 'Directory already exists'
+        return callback err
+      callback null
 
-# (file, [encoding], [callback]) -> undefined
-#
-# Desc:
-#   A reference to `fs.readFile`.
+
+# ## Read File
+# 
+# This is simply a pointer to `fs.readFile`, because i actually like it.
 read_file = fs.readFile
 
-# (base, rel, file, callback, stream) -> undefined
-#
-# Params:
-#   base: The base path. If this is a directory, it is perserved and can be
-#     nested for recursive callbacks.. though, i'm not sure why you would
-#     since this is already recursive.
-#   rel: The state of the recursive depth is stored in the rel var.
-#   file: The current file.
-#   callback: Called when all listing is done. See `list` documentation for
-#     callback formatting.
-#   stream: Called on each file/dir/etc match. See `list` documentation for
-#     stream formatting.
-#
-# Desc:
-#   A function that recursively calls `relative_list()`. Like `relative_list`,
-#   this function has the notable ability to preserve a base directory,
-#   relative directory, and file when iterating through the directory.
-recursive_list = (base, rel, file, callback, stream) ->
-  results = []
-  # This is how recursively nested we are into directories.
-  depth = 0
-  
-  # Push the results from the single list, and if we're not nested (depth > 0)
-  # then call back.
-  single_callback = (err, single_results) ->
-    results.push single_results...
-    if depth is 0
-      callback null, results
-    else
-      depth--
-  
-  # Pass the stream event off to the stream function. If the file is a
-  # directory, list it's contents and increment the depth.
-  single_stream = (base, rel, file, stats) ->
-    stream base, rel, file, stats
-    if stats.isDirectory()
-      depth++
-      relative_list base, rel, file, single_callback, single_stream
-  
-  # Start off the chain by calling relative_list.
-  relative_list base, rel, file, single_callback, single_stream
 
-# (base, rel, file, callback, stream) -> undefined
-#
-# Params:
-#   base: The base path. If this is a directory, it is perserved and can be
-#     nested for recursive callbacks.. though, i'm not sure why you would
-#     since this is already recursive.
-#   rel: The state of the recursive depth is stored in the rel var.
-#   file: The current file.
-#   callback: Called when all listing is done. See `list` documentation for
-#     callback formatting.
-#   stream: Called on each file/dir/etc match. See `list` documentation for
-#     stream formatting.
-#
-# Desc:
-#   List a single directories (or file..) contents. Notably, with the ability
-#   to preserve a base directory, relative directory, and file when iterating
-#   through the directory.
-relative_list = (base, rel, file, callback, stream) ->
-  # The file/directory we are listing.
-  source = path_join base, rel, file
+# ## Remove
+# 
+# Remove the given file or directory, with a depth option.
+remove = (rm_path, opts={}, callback=->) ->
+  if opts instanceof Function
+    callback = opts
+    opts = {}
+  opts.depth ?= 1
   
-  # Get the stat, so we know if it's a dir or file.
-  fs.stat source, (err, stats) ->
-    # If err, bail.
+  fcount = 0
+  listing = true
+  running = true
+  
+  dirs_cb = (err, infos) ->
+    if not running then return
     if err?
+      running = false
       callback err
       return
     
-    if stats.isFile()
-      # If the source is a file, we can just return it.. since we don't have
-      # anything more to list.
+    #Note that we are removing the directories like this because
+    #we want to remove them in reverse order, ensuring a simple hierarchy
+    #order. In the future we may add a proper sorting method, in which
+    #case we could speed up execution of this function for many
+    #directories.. but this is good enough for a 0.0.1 with no tests.. lol.
+    rm_dirs = ->
+      dir_info = infos.pop()
+      if not dir_info? then return callback null
       
-      if file is ''
-        # Since the caller supplied a file, but not in the file var, we
-        # need to grab the file and remove it from whichever var it came in
-        # on.
-        
-        # Grab our file name.
-        file = path.basename source
-        
-        # Based on the file we got, check the `rel` and `base` vars to see
-        # which one the file name came from.
-        if rel[-(file.length)...] is file
-          rel = rel[..(file.length+1)]
-        else
-          base = base[..(file.length+1)]
-      
-      # Call stream, and callback.
-      stream base, rel, file, stats
-      callback null, [[base, rel, file, stats]]
+      if dir_info.isfile
+        running = false
+        callback new Error "Unable to remove file '#{dir_info.path}'"
+      else
+        fs.rmdir dir_info.path, (err) ->
+          if err?
+            running = false
+            callback err
+            return
+          rm_dirs()
+    rm_dirs()
+  
+  file_done_check = ->
+    if not running then return
+    if not listing and fcount is 0
+      list rm_path, depth: opts.depth, dirs_cb
+  
+  files_cb = (err) ->
+    if not running then return
+    if err?
+      running = false
+      callback err
       return
-    else
-      # A counter for how many files we have returned.
-      file_count = 0
-      # Our collected results, given to callback.
-      file_results = []
-      
-      # Read the dir.
-      fs.readdir source, (err, files) ->
-        # Bail, if err.
-        if err
+    listing = false
+    file_done_check()
+  
+  files_stream = (file_path, info) ->
+    if info.isfile
+      fcount += 1
+      fs.unlink file_path, (err) ->
+        if err?
+          running = false
           callback err
           return
-        
-        # A local assignment, so we're not constantly accessing files.length
-        total_files = files.length
-        if total_files is 0
-          # If we have no files, callback and return.
-          callback null, []
-          return
-        else
-          rel = path_join rel, file
-          if rel is '.'
-            rel = ''
-        
-        # Our closure function, so we can loop through the files and call
-        # stat on each file.
-        stats_closure = (base, rel, file) ->
-          # Get our given source and run fs.stat
-          source = path.join(base, rel, file)
-          fs.stat source, (err, stats) ->
-            if err
-              callback err
-            
-            stream base, rel, file, stats
-            
-            file_results.push [base, rel, file, stats]
-            
-            # Increase our count, and then check the count to the total.
-            # callback with the results.
-            file_count++
-            if file_count is total_files
-              callback null, file_results
-        
-        # Call our closure with the file name.
-        for file in files
-          stats_closure base, rel, file
-
-remove = ->
-  throw new Error 'Not Implemented'
-
-# () -> string
-#
-# Desc:
-#   Calculate the path separator for the host os. Note that if available,
-#   this just uses `path.sep`, but that is a new feature to 0.8.
-sep = ->
-  if path.sep then path.sep else path.join('a', 'b')[1]
-
-# (file, data, [encoding], [callback]) -> undefined
-#
-# Params:
-#   file: The filename to write.
-#   data: The contents of the file.
-#   encoding: Optional. The encoding of the file.
-#   callback: Optional. Called when the file has finished writing, or after
-#     any errors.
-#
-# Desc:
-#   Write a file to disk. This is the same as `fs.writeFile` with the notable
-#   feature that if the directory(ies) being written does not exist, they
-#   will be created.
-write_file = (file, data, encoding, callback=->) ->
-  dir = path.dirname file
-  
-  # Check if the directory exists. If it doesn't, call `make_directory` then
-  # `write_file`
-  exists dir, (dir_exists) ->
-    if not dir_exists
-      make_directory dir, (err) ->
-        if err
-          throw err
-        fs.writeFile file, data, encoding, callback
+        fcount -= 1
+        file_done_check()
     else
-      fs.writeFile file, data, encoding, callback
+      file_done_check()
+  
+  list rm_path, depth: opts.depth, files_cb, files_stream
+  
+
+
+# ## Separator Character
+# 
+# Find the system separator. This is simply a legacy fix for multiple
+# versions of 
+sep = -> if path.sep then path.sep else path.join('a', 'b')[1]
+
+
+# ## Subtract Path
+# 
+# Subtract the one path from another, from the beginning.
+subtract = (a, b) ->
+  #Split the paths, but preserve the root sep if it exists
+  split = (path) ->
+    r = path.split sep()
+    if r[0] is ''
+      r.splice 0, 1
+      r[0] = sep() + r[0]
+    return r
+  a = split a
+  b = split b
+  for j, i in a
+    if j isnt b[i]
+      break
+  return b[i..].join sep()
+
+
+# ## Write File
+# 
+# Write a file with the given data.
+write_file = (file, data, opts, callback=->) ->
+  if opts instanceof Function
+    callback = opts
+    opts = {}
+  opts.encoding ?= undefined
+  opts.parents ?= true
+  
+  dir = path.dirname file
+  exists dir, (dir_exists) ->
+    if dir_exists
+      fs.writeFile file, data, opts.encoding, callback
+    else if opts.parents
+      make_directory dir, cascade: true, (err) ->
+        if err? then return callback err
+        fs.writeFile file, data, opts.encoding, callback
+    else
+      callback new Error 'Directory does not exist'
+
 
 
 
 exports.copy = copy
 exports.exists = exists
 exports.exists_cascade = exists_cascade
-exports.home = home
+exports.exists_sync = exists_sync
+exports.__defineGetter__ 'home', home
 exports.list = list
-exports.recursive_list = recursive_list
-exports.relative_list = relative_list
 exports.make_directory = make_directory
+exports.__defineGetter__ 'sep', sep
+exports.read_file = read_file
 exports.remove = remove
-exports.sep = sep
+exports.subtract = subtract
 exports.write_file = write_file

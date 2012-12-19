@@ -1,31 +1,25 @@
-#
-# Cakefile
-#
-# Copyright (c) 2012 Lee Olayvar <leeolayvar@gmail.com>
-# MIT Licensed
-#
+# 
+# # Pork Cakefile
+# 
+# 
 path = require 'path'
 {spawn} = require 'child_process'
+pork = require './lib'
 
-bork = require 'bork'
 
 
 
 COFFEE_BIN = path.join 'node_modules', 'coffee-script', 'bin', 'coffee'
-MOCHA_BIN = path.join 'node_modules', 'mocha', 'bin', 'mocha'
+DORK_BIN = path.join 'node_modules', 'dork', 'build', 'bin', 'dork'
 
 
 
 
-# (cmd, args=[], callback=->) -> undefined
-#
-# Params:
-#   cmd: The command to execute.
-#   args: A list of args to pass to the process
-#   callback: Callback on process exit.
-#
-# Desc:
-#   A simple process launcher that streams output.
+# ## Streaming Exec
+# 
+# A simple process launcher that streams output to the given callback. The
+# arguments are the path of the executable, a list of arguments, and a
+# callback.
 exec = (cmd, args=[], cb=->) ->
   bin = spawn cmd, args
   bin.stdout.on 'data', (data) ->
@@ -34,50 +28,55 @@ exec = (cmd, args=[], cb=->) ->
     process.stderr.write data
   bin.on 'exit', cb
 
-# We're going to give the bork task instance a different name, to avoid
-# overlapping Cakefile.task.
-bork_task = bork()
+
+# ## Compile and Copy Sources
+# 
+# Remove the build directory, and then compile or copy the supplied list
+# of sources. Any .coffee file is compiled, and non-.coffee file is copied.
+compile = (sources, callback) ->
+  
+  source_bork = bork = (require 'bork')()
+  
+  bork = bork.seq (next) ->
+    pork.remove './build', depth: 0, (err) ->
+      if err? and err.message isnt "ENOENT, stat 'build'"
+        console.log "Cake Error: #{err.message}"
+        process.exit 0
+        return
+      next()
+  
+  bork = bork.seq (nextz) ->
+    pork.list sources, depth: 0,
+      ((err) ->
+        if err?
+          console.log "Cake Error: #{err.message}"
+          process.exit 0
+          return
+        nextz()
+      ),
+      (file, info) ->
+        if info.isfile
+          bork.link (next) ->
+            if file[-7..] is '.coffee'
+              dir = path.dirname file
+              exec COFFEE_BIN, ['-co', "./build/#{dir}", file], ->
+                console.log "Compiled file '#{file}' to "+
+                  "'./build/#{dir}/#{path.basename file[0..-8]}.js'"
+                next()
+            else
+              pork.copy file, "./build/#{file}", (err) ->
+                console.log "Copied file '#{file}' to './build/#{file}'"
+                if err?
+                  console.log "Cake Error: #{err.message}"
+                  process.exit 0
+                  return
+                next()
+  
+  source_bork.start()
 
 
 task 'build', 'build all', ->
-  invoke 'build:lib'
-  invoke 'build:test'
-  bork_task.start()
-
-task 'build:lib', 'build lib', ->
-  bork_task.link (done) ->
-    console.log 'build lib start'
-    exec COFFEE_BIN, ['-co', './build/lib', './lib'], ->
-        console.log 'build lib done'
-        done()
-
-task 'build:test', 'build test', ->
-  bork_task.link (done) ->
-    console.log 'build test start'
-    exec COFFEE_BIN, ['-co', './build/test', './test'], ->
-        console.log 'build test done'
-        done()
-
-task 'test', 'build test, then run it', ->
-  invoke 'build:test'
-  invoke 'test:nobuild'
-  bork_task.start()
-
-task 'test:all', 'build all, and run the tests', ->
-  invoke 'build:lib'
-  invoke 'build:test'
-  invoke 'test:nobuild'
-  bork_task.start()
-
-task 'test:nobuild', 'just run the tests, don\'t build anything', ->
-  bork_task.seq (done) ->
-    console.log 'test start'
-    exec MOCHA_BIN, ['./test'], ->
-        console.log 'test done'
-        done()
+  compile ['./lib', './test']
 
 task 'prepublish', 'Build all, test all. Designed to work before `npm publish`', ->
-  invoke 'build:lib'
-  invoke 'build:test'
-  invoke 'test:nobuild'
-  bork_task.start()
+  compile ['./lib', './test']
