@@ -10,6 +10,7 @@ pork = require './lib'
 
 
 COFFEE_BIN = path.join 'node_modules', 'coffee-script', 'bin', 'coffee'
+DORK_BIN = path.join 'node_modules', 'dork', 'build', 'bin', 'dork'
 
 
 
@@ -28,34 +29,50 @@ exec = (cmd, args=[], cb=->) ->
   bin.on 'exit', cb
 
 
-# ## Error Handler
-# 
-# A simple error handler. If an error is provided, this prints the output
-# to console and exits the process with a failure code.
-err_handler = (err) ->
-  if err?
-    console.log "Cake Error: #{err.message}"
-    process.exit 0
-
-
 # ## Compile and Copy Sources
 # 
 # Remove the build directory, and then compile or copy the supplied list
 # of sources. Any .coffee file is compiled, and non-.coffee file is copied.
-compile = (sources) ->
-  pork.remove './build', depth: 0, (err) ->
-    if err? and err.message isnt "ENOENT, stat 'build'"
-      return err_handler err
-    pork.list SOURCE_LIST, depth: 0, err_handler, (file, info) ->
-      if info.isfile
-        if file[-7..] is '.coffee'
-          dir = path.dirname file
-          console.log "Compiling file.. '#{file}' to "+
-            "'./build/#{dir}/#{path.basename file[0..-8]}.js'"
-          exec COFFEE_BIN, ['-co', "./build/#{dir}", file]
-        else
-          console.log "Copying file.. '#{file}' to './build/#{file}'"
-          pork.copy file, "./build/#{file}"
+compile = (sources, callback) ->
+  
+  source_bork = bork = (require 'bork')()
+  
+  bork = bork.seq (next) ->
+    pork.remove './build', depth: 0, (err) ->
+      if err? and err.message isnt "ENOENT, stat 'build'"
+        console.log "Cake Error: #{err.message}"
+        process.exit 0
+        return
+      next()
+  
+  bork = bork.seq (nextz) ->
+    pork.list sources, depth: 0,
+      ((err) ->
+        if err?
+          console.log "Cake Error: #{err.message}"
+          process.exit 0
+          return
+        nextz()
+      ),
+      (file, info) ->
+        if info.isfile
+          bork.link (next) ->
+            if file[-7..] is '.coffee'
+              dir = path.dirname file
+              exec COFFEE_BIN, ['-co', "./build/#{dir}", file], ->
+                console.log "Compiled file.. '#{file}' to "+
+                  "'./build/#{dir}/#{path.basename file[0..-8]}.js'"
+                next()
+            else
+              pork.copy file, "./build/#{file}", (err) ->
+                console.log "Copied file.. '#{file}' to './build/#{file}'"
+                if err?
+                  console.log "Cake Error: #{err.message}"
+                  process.exit 0
+                  return
+                next()
+  
+  source_bork.start()
 
 
 task 'build', 'build all', ->
